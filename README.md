@@ -20,13 +20,17 @@ Manual Install: drop the skill directory into `~/.codex/skills/`
 
 ## How does it work & Limitations
 
-These are all empirical and "code taste" instructions, no tools and scripts. not strictly ablated, but improvements are certainly observable. breakdown
+These are all empirical and "code taste" instructions, no tools and scripts. not strictly ablated, but improvements are certainly observable.
+
+Breakdown:
+Part 1:
 
 - Parse, don’t validate: pith of type-driven design
 - Push error handling down to boundary layers: combat codex defensive behavior, corollary of parse don't validate
-- Minimize visibility: protect invariants
+- Minimize visibility: protect invariants, corollary of parse don't validate
+- prefer `Box<[T]>`: combat common overuse of Vec and String, [reference](https://youtu.be/A4cKi7PTJSs?si=SYOQX0a3gLWqdC7S)
 
-- prefer `Box<[T]>`: combat common misuse of Vec and String
+Part2:
 
 - Initialize a Repo and Implement v1: crate layout and type design from day one, combat chatbot "self-contained demo" behavior
 - Implement a Feature: restate requirements helps better human-machine collaboration

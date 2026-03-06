@@ -16,13 +16,16 @@ Manual Install: drop the skill directory into `~/.codex/skills/`
 
 0. to ensure agents use this skill, mention `use rust-dev skill` in your project AGENTS.md 
 1. do everything as usual, e.g. init project, develop a feature, fix, refactor.
-2. if agent sometimes fail to follow it, you can mention it again explicitly.
+2. if agent sometimes fail to follow it, you can mention the skill again explicitly.
 
 ## How does it work & Limitations
 
-These are all empirical and "code taste" instructions, no tools and scripts. not strictly ablated, but improvements are certainly observable.
+This skills is purely empirical and "code taste" instructions, no tools and scripts. 
+
+not strictly ablated, but improvements are certainly observable.
 
 Breakdown:
+
 Part 1:
 
 - Parse, don’t validate: pith of type-driven design

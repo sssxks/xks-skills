@@ -10,7 +10,6 @@ description: Rust best practices and workflows. Make sure to use this skill when
 - **Parse, don’t validate.** Prefer encoding constraints into types, rather than repeating validations along business paths.
   - **Core business code & reusable libraries:** call sites must not use `panic!/expect/unwrap/unsafe`. `unsafe` is allowed *inside* types/modules that maintain invariants, but add `debug_assert!` and safety comments.
   - **Tests & entrypoints:** `expect/unwrap` are allowed.
-  - **“Unreachable” cases that the type system can’t express:** (and thus cannot be pushed into type internals) prefer normal error handling; avoid using `unreachable!` that expands the panic surface.
 
 - **Push error handling down to boundary layers** (I/O, model, and other edges). Keep the business layer focused on business actions and their meaningful failure modes.
   - Avoid defensive branching and meaningless fallbacks in the business path; use the type system to eliminate impossible states.
@@ -30,7 +29,7 @@ Micro-optimization tips:
 
 ### 1. Initialize a Repo and Implement v1
 
-- Things to think about from day one: system boundaries, the end-to-end happy path, the error model, and quality gates.
+- Things to think about from day one: system boundaries, end-to-end happy path, error model.
 - Prefer splitting crates early. Minimal example: each crate contains a `lib.rs` with a few dozen to a hundred lines. Split into modules further if needed.
 - Design types, and draft definitions in pseudocode. Requirements:
   - Use newtypes for (almost) everything. Examples: `UserId(u32)`, `Email(Box<str>)`.
@@ -46,8 +45,21 @@ Micro-optimization tips:
 
 ### 3. Refactor Existing Code
 
-- Investigate the baseline and understand current behavior. Prefer refactoring without changing externally observable behavior.
-- Restate and confirm whether existing business semantics are still necessary. If requirements are obsolete, behavior changes may be introduced.
-- Ensure refactors are thorough: check bypass paths, delete dead code, and keep the codebase clean.
-- For large refactors, create an experimental crate to simulate business logic and validate feasibility to reduce risk.
+#### Principles
+
+- Refactoring is about making code easier to reason about while, by default, preserving externally observable behavior.
+- If a behavior change is intentional, treat it as a requirement change and describe the behavior diff explicitly.
+
+- Prefer refactors that handle complexity:
+  - No configuration when convention is sufficient.
+  - Make behavior more data-driven, declarative - e.g. tables, enums, policies - over scattered control flow.
+  - If a macro argument may be evaluated lazily, conditionally, or more than once(i.e. most of the time), use closure syntax `|| ...` rather than a plain `expr`.
+- Prefer types that expose valid state transitions over wide mutable surfaces and unconstrained setters.
+- Avoid refactors that only split large functions or modules without reducing the invariants and preconditions each unit must rely on. This usually makes control-flow more scattered.
+
+#### Steps
+- Investigate the baseline and understand current behavior.
+- Restate and confirm whether existing business semantics are still necessary. If requirements are obsolete, may change behavior.
+- Ensure refactors are thorough: check bypass paths, delete dead code. Do not leave wrappers or re-export. If not otherwise stated, assume no external code dependencies on internal crates of a rust app(not a library).
+- For large refactors, create an experimental crate.
   - To make reviewing experimental crate easier, comment heavily.

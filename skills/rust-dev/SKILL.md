@@ -11,20 +11,20 @@ description: Type system, safety, optimization and workflows. Use this skill on 
   - 业务代码 & 库： 调用者不得使用 `panic!`/`expect`/`unwrap`/`unsafe`。`unsafe` 仅允许在维护不变量的类型/模块内部使用，并需加上 `debug_assert!` 和安全注释。
   - 测试 & 入口点： 允许使用 `expect`/`unwrap`。
 
-- 将错误处理推至边界层，例如IO、FFI层。业务层专注业务操作及有业务意义的失败模式。
+- 将错误处理推至边界层，如IO、FFI层。业务层专注有业务意义的失败模式。
   - 避免在业务路径中出现防御性分支和无意义的兜底；使用类型系统消除不可能状态。
-  - 删除死代码和关键路径上的no-op。任何剩余分支必须有真实语义或可验证的未来用途。
-  - 库内部错误优先 panic。由于该语言类型系统限制，这是可接受的。
+  - 删除死代码、关键路径上的no-op。分支必须有真实语义。
+  - 库内部错误优先 panic。由于 rust 类型系统限制，这是可接受的。
 
-- 最小化可见性。 如果不变量依赖于私有字段或私有方法，则只暴露最小必要范围的访问。经验法则：如果一个类型是其字段笛卡尔积的*真子集*，则这些字段应保持私有。示例：
+- 最小化可见性。如果不变量依赖于私有字段或私有方法，则只暴露最小必要范围的访问。经验法则：如果一个类型是其字段笛卡尔积的*真子集*，则这些字段应保持私有。示例：
   - `User` 要求至少提供 `email` 或 `phone`，因此字段应私有，并在 setter/ctor 中验证。
-  - 如果不变量仅涉及单个字段，将该字段包装为 newtype，而非将整个结构体设为私有。例如：使用 `Email(Box<str>)` 而非 `User { email: Box<str>, ... }`。
+  - 如果不变量仅涉及单个字段，将该字段包装为 newtype，而非私有化整个结构体。例如：使用 `Email(Box<str>)` 而非 `User { email: Box<str>, ... }`。
   - 对于承载逻辑的类型（如 `Service`/`Manager`/`Controller` 等），字段几乎总是应为私有。
-  - 例外：DTO 及其他“命名字元组”类型可保持字段公开。
+  - 例外：DTO 及其他 named tuple 类型可保持字段公开。
 
 ## Unsafe 审计单元
 
-每个 unsafe 抽象都需要一个审计单元。在可行情况下优先选择 crate 作为审计单元。在 unsafe 审计单元内部修改一个安全的函数，需要重新检查所有的 unsafe 块。每个 unsafe 块都需要一个面向依赖关系的 `// SAFETY:` 注释：
+每个 unsafe 抽象都需要一个审计单元。优先选择 crate 作为审计单元。在 unsafe 审计单元内部修改安全函数，重新检查所有的 unsafe 块。unsafe 块需要面向依赖关系的 `// SAFETY:` 注释：
 
 ```rust
 // SAFETY:
@@ -39,9 +39,7 @@ description: Type system, safety, optimization and workflows. Use this skill on 
 unsafe { ptr.add(i).read() }
 ```
 
-不要写 `// SAFETY: invariant holds for this type.`。
-
-unsafe 代码必须对安全的依赖项进行分类：
+不能写 `// SAFETY: invariant holds for this type.`。对依赖项需要分类：
 
 | 种类 | 规则 |
 | - | - |
@@ -49,15 +47,15 @@ unsafe 代码必须对安全的依赖项进行分类：
 | 下游实现：trait、回调 | 不可信。 |
 | `unsafe fn`、`unsafe trait`、sealed trait、私有构造函数 | 可信任。 |
 
-对于形如 `fn foo<T>(down_stream: T)` 的每个函数，优先使用 `unsafe trait`。不要将其标记为 `unsafe fn` 并写无意义的 `// SAFETY: invariant holds for caller supplied down_stream.`。
+对于形如 `fn foo<T>(down_stream: T)` 的函数，优先使用 `unsafe trait`。不要标记为 `unsafe fn` 并写无意义的 `// SAFETY: invariant holds for caller supplied down_stream.`。
 
 ## Rustdoc
 
-需要完善的Rustdoc，包括 private items。
+完善 Rustdoc，包括 private items。
 
-为类型写文档时，需要说明
-- 当前紧凑类型在语义上对应的朴素ADT是什么，即做一个数学定义。
-- 解释编码规则，包括两方面：语义值和不变量。语义值即为对上述朴素类型的映射，不变量即为不可能出现的编码。
+为类型写的文档需要有
+- 当前紧凑类型在语义上对应的朴素ADT是什么，即下数学定义。
+- 解释编码规则。两方面，包括语义值和不变量。语义值为对上述朴素类型的映射，不变量为不可能出现的编码。
 
 示例
 ```rust
@@ -89,7 +87,7 @@ struct Email {full: Box<str>,at_offset: u32}
 
 ## 复杂度契约
 
-实现数据结构或算法前，编写复杂度表格。
+实现数据结构或算法前编写复杂度表格。
 
 | Operation | Frequency | Complexity | Data structure | Forbidden Impl |
 | - | - | - | - | - |
@@ -105,13 +103,13 @@ struct Email {full: Box<str>,at_offset: u32}
 | deletion or compaction | custom arena with tracing or freelist |
 | cross-thread immutable sharing | `Arc<T>`, `Arc<[T]>`, `Arc<str>` |
 
-- 不需要存的就不存，重复信息只存一份。
+- 不需要存的不存，重复信息只存一份。
   - 可以从其他字段在 O(1) 时间内重新计算出的数据，都不存。例如：可推导的长度、校验和、预计算哈希（除非热点剖面证明其必要）。
   - 可以从其他存储取得的数据，优先借用，也不自己存。
 - 对于不可变变长数据
   - 建议使用 `bumpalo` 或 nightly 分配器。
-  - 不建议用 `Box<[T]>` 和 `Box<str>` 存储，尤其生命周期短时，会造成高昂的递归 Drop 和分配成本。
-  - 禁止使用 `Vec<T>` 和 `String` 存储。
+  - 不建议用 `Box<[T]>` 和 `Box<str>`，尤其生命周期短时，会造成高昂的递归 Drop 和分配成本。
+  - 禁止使用 `Vec<T>` 和 `String`。
 - 对于可变变长数据
   - 使用 `Vec<T>` 和 `String`，或者 tracing arena。
 - 对于定长数据
@@ -120,39 +118,41 @@ struct Email {full: Box<str>,at_offset: u32}
   - 禁止使用 `std::rc::Rc`。在单线程上下文中，必须通过清晰的单一所有权或借用解决共享，无法解决时重新审视架构。
   - `std::sync::Arc` 仅允许用于跨线程共享不可变数据，不得用于可变共享或单线程场景。
   - 需要共享可变状态时，优先考虑基于索引的句柄配合 arena 分配，或使用通道传递所有权。
-- 仅保留复杂度契约依赖的索引结构，避免为方便而构建辅助映射。
+- 保留复杂度契约需要的索引结构，避免为方便而构建辅助映射。
 
 ### 整数和打包
+
 - 使用 `u32` ID。多数情况，`u32` ID 随对象死亡而复用，因此足够安全。
 - 若值域允许，优先使用 `u8/i8`、`u16/i16`。
-- 算术运算尽量使用 64 位整数，检查潜在无界情况。
 - 当一个大的标量可拆分为多个不同含义且各自有界的小字段时，应手动分包。
+- 算术需求和潜在无界的数值：尽量使用 64 位整数。
 
-### Enum, Option, 和填充
+### Enum, Option 和填充
 
-- 倾向 SoA。实现细节：避免 `Vec<field1>, Vec<field2>…` 分散分配。由于这些 Vec 总是同步增长，应合并为单个 `Vec<u8>` 或 `Vec<u64>`，自行按 stride 编排字段为 SoA，并封装安全的访问器。
+- 倾向 SoA。实现细节：避免 `Vec<field1>, Vec<field2>…` 逐字段分配。由于这些 Vec 总是同步增长，应合并为单个 `Vec<u8>` 或 `Vec<u64>`，自行按 stride 编排字段为 SoA，并封装安全的访问器。
 - niche 优化：利用 Rust 枚举和 `Option` 已有的 niche 拟合，或手动实现 niche。
-- 位向量可能是负优化。使用 `bitvec` 等 crate 存储 `Vec<bool>` 或标志位集合。
+- 位向量可能是负优化。顺序访问、带宽瓶颈时可做 `bitvec` 优化，否则不优化。
 
 ## 减少分配
 
-- 循环内复用：临时缓冲区通过 `.clear()` 重置并保留容量。
-- 跨生命周期复用：需评估将分配从局部作用域提升到外层结构或调用者。
-  - 禁止在返回值中使用不必要的堆分配容器，例如无缘由地返回 `Vec<T>`、`String`、`Box<dyn Error>`。
-  - 优先接受 `&mut [T]`、`&mut impl Write` 等输出参数，返回 `impl Iterator<Item = T>` 或提供 `visit`。
+- 循环内复用：临时缓冲区通过 `.clear()` 重置以保留容量。
+- 跨生命周期复用：评估将分配从局部作用域提升到外层结构或调用者。
+  - 禁止返回不必要的堆分配容器，例如 `Vec<T>`、`String`、`Box<dyn Error>`。
+  - 优先接受 `&mut [T]`、`&mut impl Write` 等参数，返回 `impl Iterator<Item = T>` 或提供 `visit`。
 
 
 ## 激进 `#[inline(always)]`
 
-- 编译器不对优化行为作出承诺，除非手动标记。实际上，经过多层转发的函数，llvm容易内联失败；
-- 从跨函数优化分析能获得性能收益的函数都应当inline。例如一个函数可能存在某个特定precondition，使得函数内的panic检查变成死代码。
+- 跨函数分析能获得性能收益的函数应当标注。即存在某个前置条件，满足后函数内的panic检查变成死代码。
+- llvm容易内联失败经过多层转发的函数，需适当标注。
 
 ## 4. 减少 Indirection
 
-- 当内联（直接嵌入）一个字段既能消除一次指针跳转，又不会显著增大所在结构体体积时，务必内联。
+- 当内联（嵌入）字段既能消除一次指针跳转，又不会显著增大所在结构体体积时，务必内联。
 - 若两者冲突，应追求帕累托最优：没有多余的间接，且没有无谓的体积膨胀。通过性能剖面指导最终决策。
-- 当现有抽象无法满足紧凑和零间接的要求时，可能需要手动实现自定义 DST（如定制 fat pointer 的切片、变长结构等）。但是不建议手写 thin pointer + pointee header 存储长度。
-- 对于树或嵌套结构，如果访问模式极其规律，例如先序遍历，应优先使用无指针的紧凑表示，如：
+- 当现有抽象无法满足紧凑和零间接的要求时，可能需要手动实现自定义 DST fat pointer。
+  - 不建议手写 thin pointer + pointee header 存储长度。
+- 对于树或嵌套结构，如果访问模式极其规律，例如先序遍历，应优先使用无指针的序列表示：
   - balanced parentheses 序列
   - 基于 S-Expression 的扁平化序列
 

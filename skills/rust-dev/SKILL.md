@@ -1,65 +1,198 @@
 ---
 name: rust-dev
-description: Rust best practices and workflows. Make sure to use this skill whenever working on Rust projects.
+description: Type system, safety, optimization and workflows. Use this skill on all rust projects.
 ---
 
-# Rust Development Skill
+# 安全与类型
 
-## Coding Style
+## 类型安全
 
-- **Parse, don’t validate.** Prefer encoding constraints into types, rather than repeating validations along business paths.
-  - **Core business code & reusable libraries:** call sites must not use `panic!/expect/unwrap/unsafe`. `unsafe` is allowed *inside* types/modules that maintain invariants, but add `debug_assert!` and safety comments.
-  - **Tests & entrypoints:** `expect/unwrap` are allowed.
+- 解析，而非验证。 将约束编码到类型中，不在业务路径中重复验证。
+  - 业务代码 & 库： 调用者不得使用 `panic!`/`expect`/`unwrap`/`unsafe`。`unsafe` 仅允许在维护不变量的类型/模块内部使用，并需加上 `debug_assert!` 和安全注释。
+  - 测试 & 入口点： 允许使用 `expect`/`unwrap`。
 
-- **Push error handling down to boundary layers** (I/O, model, and other edges). Keep the business layer focused on business actions and their meaningful failure modes.
-  - Avoid defensive branching and meaningless fallbacks in the business path; use the type system to eliminate impossible states.
-  - Remove dead code and no-ops on critical paths. Any remaining branch must have real semantics or a verifiable future purpose.
+- 将错误处理推至边界层，例如IO、FFI层。业务层专注业务操作及有业务意义的失败模式。
+  - 避免在业务路径中出现防御性分支和无意义的兜底；使用类型系统消除不可能状态。
+  - 删除死代码和关键路径上的no-op。任何剩余分支必须有真实语义或可验证的未来用途。
+  - 库内部错误优先 panic。由于该语言类型系统限制，这是可接受的。
 
-- **Minimize visibility.** If invariants rely on private fields or private methods, expose access only to the minimum necessary scope. A rule of thumb: if a type is a *proper subset* of the Cartesian product of its fields, those fields should remain private. Examples:
-  - A `User` requires at least one of `email` or `phone`, so fields should be private and validated in setters/constructors.
-  - If an invariant concerns only a single field, wrap that field in a newtype instead of making the whole struct private. Example: `Email(Box<str>)` rather than `User { email: Box<str>, ... }`.
-  - For logic-bearing types like `Service/Manager/Controller/...`, fields should almost always be private.
-  - Exception: DTOs and other “named tuple” types may keep fields public.
+- 最小化可见性。 如果不变量依赖于私有字段或私有方法，则只暴露最小必要范围的访问。经验法则：如果一个类型是其字段笛卡尔积的*真子集*，则这些字段应保持私有。示例：
+  - `User` 要求至少提供 `email` 或 `phone`，因此字段应私有，并在 setter/ctor 中验证。
+  - 如果不变量仅涉及单个字段，将该字段包装为 newtype，而非将整个结构体设为私有。例如：使用 `Email(Box<str>)` 而非 `User { email: Box<str>, ... }`。
+  - 对于承载逻辑的类型（如 `Service`/`Manager`/`Controller` 等），字段几乎总是应为私有。
+  - 例外：DTO 及其他“命名字元组”类型可保持字段公开。
 
-Micro-optimization tips:
+## Unsafe 审计单元
 
-- In type definitions, prefer `Box<[T]>` or `Rc<[T]>` by default; introduce `Vec<T>` or `Arc<[T]>` only when needed. Same for strings: prefer `Box<str>` / `Rc<str>`, and use `String` / `Arc<str>` only when necessary.
+每个 unsafe 抽象都需要一个审计单元。在可行情况下优先选择 crate 作为审计单元。在 unsafe 审计单元内部修改一个安全的函数，需要重新检查所有的 unsafe 块。每个 unsafe 块都需要一个面向依赖关系的 `// SAFETY:` 注释：
 
-## Development Workflow
+```rust
+// SAFETY:
+// Required by `ptr.add(i).read()`:
+// - `ptr` points to one allocation containing at least `len` initialized elements.
+// - `i < len`.
+// Maintained by:
+// - `Inner::new` initializes `ptr`, `len`, and `cap` consistently.
+// - `Inner::push` increments `len` only after writing the element.
+// Trusted callees:
+// - no user-provided trait methods or callbacks are used to justify memory safety.
+unsafe { ptr.add(i).read() }
+```
 
-### 1. Initialize a Repo and Implement v1
+不要写 `// SAFETY: invariant holds for this type.`。
 
-- Things to think about from day one: system boundaries, end-to-end happy path, error model.
-- Prefer splitting crates early. Minimal example: each crate contains a `lib.rs` with a few dozen to a hundred lines. Split into modules further if needed.
-- Design types, and draft definitions in pseudocode. Requirements:
-  - Use newtypes for (almost) everything. Examples: `UserId(u32)`, `Email(Box<str>)`.
-  - Apply the visibility rules in **Coding Style** carefully.
-  - Design efficient memory layout for hot types, but prioritize semantics; don’t optimize prematurely.
-- Deliverables: a requirements doc (with use cases and test cases), a project skeleton, and a type system.
+unsafe 代码必须对安全的依赖项进行分类：
 
-### 2. Implement a Feature
+| 种类 | 规则 |
+| - | - |
+| 审计单元内的函数和类型 | 可信任。修改需要重新审计。 |
+| 下游实现：trait、回调 | 不可信。 |
+| `unsafe fn`、`unsafe trait`、sealed trait、私有构造函数 | 可信任。 |
 
-- Investigate baseline and understand current behavior. (You may run code, add temporary logs, etc.)
-- Restate the requirement to avoid rework. Express it as a precise behavior diff whenever possible.
-- Don’t break organization & layering. Put new code in correct place or create a new module.
+对于形如 `fn foo<T>(down_stream: T)` 的每个函数，优先使用 `unsafe trait`。不要将其标记为 `unsafe fn` 并写无意义的 `// SAFETY: invariant holds for caller supplied down_stream.`。
 
-### 3. Refactor Existing Code
+## Rustdoc
 
-#### Principles
+需要完善的Rustdoc，包括 private items。
 
-- Refactoring is about making code easier to reason about. by default, preserve externally observable behavior.
-- If a behavior change is intentional for significantly easier reasoning, treat it as a requirement change and describe the behavior diff explicitly.
+为类型写文档时，需要说明
+- 当前紧凑类型在语义上对应的朴素ADT是什么，即做一个数学定义。
+- 解释编码规则，包括两方面：语义值和不变量。语义值即为对上述朴素类型的映射，不变量即为不可能出现的编码。
 
-- Prefer refactors that handle complexity:
-  - No configuration when convention is sufficient.
-  - Make behavior more data-driven, declarative - e.g. tables, enums, policies - over scattered control flow.
-  - If a macro argument may be evaluated lazily, conditionally, or more than once(i.e. most of the time), use closure syntax `|| ...` rather than a plain `expr`.
-- Prefer types that expose valid state transitions over wide mutable surfaces and unconstrained setters.
-- Avoid refactors that only split large functions or modules without reducing the invariants and preconditions each unit must rely on. This usually makes control-flow more scattered.
+示例
+```rust
+/// Email address.
+///
+/// Semantically, an email address is `LocalPart × DomainPart`.
+///
+/// where:
+/// - `LocalPart` is ...,
+/// - `DomainPart` is ....
+///
+/// # Encoding
+///
+/// - `(LocalPart, DomainPart)` → `format!("{local}@{domain})`, offset = `local.len()`.
+/// - Invariants: The string contains exactly one `@`, ...
+///
+/// Because the constructor enforces the invariants, `local_part()` and `domain_part()` can slice
+/// directly using the known offset without re‑validation.
+///
+/// # Example
+///
+/// ```
+/// ...
+/// ```
+struct Email {full: Box<str>,at_offset: u32}
+```
 
-#### Steps
-- Investigate the baseline and understand current behavior.
-- Restate and confirm whether existing business semantics are still necessary. If requirements are obsolete, may change behavior.
-- Ensure refactors are thorough: check bypass paths, delete dead code. Do not leave wrappers or re-export. If not otherwise stated, assume no external code dependencies on internal crates of a rust app(not a library).
-- For large refactors, create an experimental crate.
-  - To make reviewing experimental crate easier, comment heavily.
+# 复杂度与优化
+
+## 复杂度契约
+
+实现数据结构或算法前，编写复杂度表格。
+
+| Operation | Frequency | Complexity | Data structure | Forbidden Impl |
+| - | - | - | - | - |
+| ... | ... | ... | ... | ... |
+
+## 存储策略
+
+| Need | Representation |
+| - | - |
+| no storage | recompute or borrow |
+| append-only immutable payload | `bumpalo`, `Vec<T>`, arena |
+| append-only typed objects | `Vec<T>` plus ID |
+| deletion or compaction | custom arena with tracing or freelist |
+| cross-thread immutable sharing | `Arc<T>`, `Arc<[T]>`, `Arc<str>` |
+
+- 不需要存的就不存，重复信息只存一份。
+  - 可以从其他字段在 O(1) 时间内重新计算出的数据，都不存。例如：可推导的长度、校验和、预计算哈希（除非热点剖面证明其必要）。
+  - 可以从其他存储取得的数据，优先借用，也不自己存。
+- 对于不可变变长数据
+  - 建议使用 `bumpalo` 或 nightly 分配器。
+  - 不建议用 `Box<[T]>` 和 `Box<str>` 存储，尤其生命周期短时，会造成高昂的递归 Drop 和分配成本。
+  - 禁止使用 `Vec<T>` 和 `String` 存储。
+- 对于可变变长数据
+  - 使用 `Vec<T>` 和 `String`，或者 tracing arena。
+- 对于定长数据
+  - 使用 `Vec<T>` + ID，需要删除时使用 freelist。
+- 对于引用计数
+  - 禁止使用 `std::rc::Rc`。在单线程上下文中，必须通过清晰的单一所有权或借用解决共享，无法解决时重新审视架构。
+  - `std::sync::Arc` 仅允许用于跨线程共享不可变数据，不得用于可变共享或单线程场景。
+  - 需要共享可变状态时，优先考虑基于索引的句柄配合 arena 分配，或使用通道传递所有权。
+- 仅保留复杂度契约依赖的索引结构，避免为方便而构建辅助映射。
+
+### 整数和打包
+- 使用 `u32` ID。多数情况，`u32` ID 随对象死亡而复用，因此足够安全。
+- 若值域允许，优先使用 `u8/i8`、`u16/i16`。
+- 算术运算尽量使用 64 位整数，检查潜在无界情况。
+- 当一个大的标量可拆分为多个不同含义且各自有界的小字段时，应手动分包。
+
+### Enum, Option, 和填充
+
+- 倾向 SoA。实现细节：避免 `Vec<field1>, Vec<field2>…` 分散分配。由于这些 Vec 总是同步增长，应合并为单个 `Vec<u8>` 或 `Vec<u64>`，自行按 stride 编排字段为 SoA，并封装安全的访问器。
+- niche 优化：利用 Rust 枚举和 `Option` 已有的 niche 拟合，或手动实现 niche。
+- 位向量可能是负优化。使用 `bitvec` 等 crate 存储 `Vec<bool>` 或标志位集合。
+
+## 减少分配
+
+- 循环内复用：临时缓冲区通过 `.clear()` 重置并保留容量。
+- 跨生命周期复用：需评估将分配从局部作用域提升到外层结构或调用者。
+  - 禁止在返回值中使用不必要的堆分配容器，例如无缘由地返回 `Vec<T>`、`String`、`Box<dyn Error>`。
+  - 优先接受 `&mut [T]`、`&mut impl Write` 等输出参数，返回 `impl Iterator<Item = T>` 或提供 `visit`。
+
+
+## 激进 `#[inline(always)]`
+
+- 编译器不对优化行为作出承诺，除非手动标记。实际上，经过多层转发的函数，llvm容易内联失败；
+- 从跨函数优化分析能获得性能收益的函数都应当inline。例如一个函数可能存在某个特定precondition，使得函数内的panic检查变成死代码。
+
+## 4. 减少 Indirection
+
+- 当内联（直接嵌入）一个字段既能消除一次指针跳转，又不会显著增大所在结构体体积时，务必内联。
+- 若两者冲突，应追求帕累托最优：没有多余的间接，且没有无谓的体积膨胀。通过性能剖面指导最终决策。
+- 当现有抽象无法满足紧凑和零间接的要求时，可能需要手动实现自定义 DST（如定制 fat pointer 的切片、变长结构等）。但是不建议手写 thin pointer + pointee header 存储长度。
+- 对于树或嵌套结构，如果访问模式极其规律，例如先序遍历，应优先使用无指针的紧凑表示，如：
+  - balanced parentheses 序列
+  - 基于 S-Expression 的扁平化序列
+
+# 开发工作流
+
+保持代码无 clippy 警告。不管是不是这次改动引入的，只要有就清理掉。
+
+### 1. 初始化仓库并实现 v1
+
+- 一开始就要考虑：系统边界、端到端正向路径、错误模型。
+- 尽早拆分 crate。最小示例：每个 crate 包含一个 `lib.rs`，几十到小几百行代码。更长代码需要进一步拆分为模块。
+- 设计类型，用伪代码起草定义。要求：
+  - 对（几乎）所有内容使用 newtype。例如：`UserId(u32)`、`Email(Box<str>)`。
+  - 谨慎应用编码风格中的可见性规则。
+  - 为热点类型设计高效内存布局。
+- 交付物：需求文档（包含用例和测试用例）、项目骨架、类型系统。
+
+### 2. 实现一个特性
+
+- 研究基线，理解当前行为，可运行代码、添加临时日志。
+- 重新表述需求以避免返工。尽可能将其表达为精确的行为差异。
+- 不破坏组织与分层。将新代码放到正确位置，或创建新模块。
+
+### 3. 重构现有代码
+
+#### 原则
+
+- 重构的目标是让代码更易于推理。
+- 避免只拆分大函数为小函数，却不减少每个单元必须依赖的前置条件。这通常起到反效果，使控制流更加分散。请务必不要这么做。
+- 如果为了简化推理而有意改变行为，则视为需求变更，并明确描述行为差异。
+- 优先选择能处理复杂度的重构：
+  - 当约定足够时，不引入配置。
+  - 让行为更数据驱动、声明式，例如使用表、枚举、宏。
+  - 宏参数可能被惰性、有条件或多次求值（即大多数情况），此时建议使用闭包语法 `|| ...` 而非普通表达式 `expr`。
+- 优先选择暴露有效状态转换的类型，而不是宽泛的可变表面和不受约束的 setter。
+
+#### 步骤
+
+- 研究基线，理解当前行为。
+- 重新表述并确认现有业务语义是否仍然必要。如果需求已过时，可以改变行为。
+- 确保重构彻底：删除死代码，检查是否存在绕过重构后的代码的路径。禁止留wrapper或re-export。
+- 死代码标准：clippy警告的死代码，外加死 `pub` 函数。除非项目另有说明，否则假设 workspace 的内部 crate 无外部依赖，死 `pub` 函数可以放心删除。
+- 对于大型重构，创建一个实验性 crate。

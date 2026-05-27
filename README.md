@@ -5,7 +5,12 @@ Human-crafted skills for coding in rust.
 ## Install (vercel `skills`)
 
 ```bash
+# List available skills
+npx skills add sssxks/xks-skills --list
+# Install the skill
 npx skills add sssxks/xks-skills
+# Update all global skills
+npx skills update -g -y
 ```
 
 ## Install (Codex)
@@ -13,7 +18,7 @@ npx skills add sssxks/xks-skills
 codex → skill-installer → Paste following prompt
 
 ```
-Install skill from https://github.com/sssxks/xks-skills/tree/main/rust-dev
+Install skill from https://github.com/sssxks/xks-skills/
 ```
 
 Manual Install: drop the skill directory into `~/.codex/skills/`

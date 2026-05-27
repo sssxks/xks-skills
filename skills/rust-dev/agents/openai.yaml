@@ -2,7 +2,7 @@
 
 interface:
   display_name: "Rust Dev"
-  short_description: "Type driven best practices and workflows for agentic Rust development"
+  short_description: "Rust dev, type driven, micro optimization"
   icon_small: "./assets/icon.svg"
   icon_large: "./assets/icon.svg"
   brand_color: "#D9773A"

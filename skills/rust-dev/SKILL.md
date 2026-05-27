@@ -39,16 +39,16 @@ Micro-optimization tips:
 
 ### 2. Implement a Feature
 
-- Investigate the baseline and understand current behavior. (You may run code, add temporary logs, etc.)
-- Restate the requirement to avoid rework. Express it as a precise “behavior diff” whenever possible.
-- Don’t break layering. Put new code in the correct module.
+- Investigate baseline and understand current behavior. (You may run code, add temporary logs, etc.)
+- Restate the requirement to avoid rework. Express it as a precise behavior diff whenever possible.
+- Don’t break organization & layering. Put new code in correct place or create a new module.
 
 ### 3. Refactor Existing Code
 
 #### Principles
 
-- Refactoring is about making code easier to reason about while, by default, preserving externally observable behavior.
-- If a behavior change is intentional, treat it as a requirement change and describe the behavior diff explicitly.
+- Refactoring is about making code easier to reason about. by default, preserve externally observable behavior.
+- If a behavior change is intentional for significantly easier reasoning, treat it as a requirement change and describe the behavior diff explicitly.
 
 - Prefer refactors that handle complexity:
   - No configuration when convention is sufficient.

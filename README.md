@@ -1,6 +1,6 @@
 ![rust-dev](skills/rust-dev/assets/icon.svg)
 
-Human-crafted skills for coding in rust.
+Human-crafted skills for rust. my personal coding taste!
 
 ## Install (vercel `skills`)
 
@@ -25,6 +25,6 @@ Manual Install: drop the skill directory into `~/.codex/skills/`
 
 ## Usage
 
-0. to ensure agents use this skill, mention `use rust-dev skill` in your project AGENTS.md 
-1. do everything as usual, e.g. init project, develop a feature, fix, refactor.
-2. if agent sometimes fail to follow it, you can mention the skill again explicitly.
+0. To encourage agents use this skill, mention `use rust-dev skill` in your project AGENTS.md.
+1. Do everything as usual, e.g. init project, plan a design, implement a feature, fix bugs, refactor.
+2. This skill is opinionated; Customize and tweak to satisfy your own programming taste.

@@ -1,4 +1,4 @@
-![rust-dev](rust-dev/assets/icon.svg)
+![rust-dev](skills/rust-dev/assets/icon.svg)
 
 Human-crafted skills for coding in rust.
 

@@ -1,7 +1,9 @@
 ---
-name: rust-dev
-description: Type system, safety, optimization and workflows. Use this skill on all rust projects.
+name: code-like-rust
+description: Rust-like coding style. type system, safety, optimization best practices apply to almost all PLs!
 ---
+
+Rust-like 编码风格，不同语言灵活迁移应用下面规则。e.g. 托管安全语言不需要参考 unsafe 部分。
 
 # 安全与类型
 
@@ -22,9 +24,13 @@ description: Type system, safety, optimization and workflows. Use this skill on 
   - 对于承载逻辑的类型（如 `Service`/`Manager`/`Controller` 等），字段几乎总是应为私有。
   - 例外：DTO 及其他 named tuple 类型可保持字段公开。
 
-## Unsafe 审计单元
+## Unsafe 使用
 
-每个 unsafe 抽象都需要一个审计单元。优先选择 crate 作为审计单元。在 unsafe 审计单元内部修改安全函数，重新检查所有的 unsafe 块。unsafe 块需要面向依赖关系的 `// SAFETY:` 注释：
+unsafe 不具备局部性。在修改safe函数时，可能造成临近 unsafe 块的安全前提失效的范围，我们称作一个unsafe隔离单元。
+
+优先选择crate作为隔离单元。在隔离单元外的代码，我们保证任意的safe代码都不UB。
+
+下面这个例子是一个概念化的例子，展示了一个unsafe块的安全前提由库中的别的函数维护。实际不需要这么多的施法仪式。
 
 ```rust
 // SAFETY:
@@ -51,47 +57,13 @@ unsafe { ptr.add(i).read() }
 
 ## Rustdoc
 
-完善 Rustdoc，包括 private items。
-
-为类型写的文档需要有
-- 当前紧凑类型在语义上对应的朴素ADT是什么，即数学定义。
-- 解释编码规则。包括语义值和不变量两方面。语义值为对上述朴素类型的映射，不变量为不可能出现的编码。
-
-示例
-```rust
-/// Email address.
-///
-/// Semantically, an email address is `LocalPart × DomainPart`.
-///
-/// where:
-/// - `LocalPart` is ...,
-/// - `DomainPart` is ....
-///
-/// # Encoding
-///
-/// - `(LocalPart, DomainPart)` → `format!("{local}@{domain})`, offset = `local.len()`.
-/// - Invariants: The string contains exactly one `@`, ...
-///
-/// Because the constructor enforces the invariants, `local_part()` and `domain_part()` can slice
-/// directly using the known offset without re‑validation.
-///
-/// # Example
-///
-/// ```
-/// ...
-/// ```
-struct Email {full: Box<str>,at_offset: u32}
-```
+Rustdoc 都要写，包括 private items。如果这个类型压过内存表示，还要把语义上对应的朴素ADT定义是什么写一下。
 
 # 复杂度与优化
 
 ## 复杂度契约
 
-实现数据结构或算法前编写复杂度表格。
-
-| Operation | Frequency | Complexity | Data structure | Forbidden Impl |
-| - | - | - | - | - |
-| ... | ... | ... | ... | ... |
+实现数据结构或算法前考虑复杂度，避免复杂度意义上的低效实现。
 
 ## 存储策略
 
@@ -104,7 +76,7 @@ struct Email {full: Box<str>,at_offset: u32}
 | cross-thread immutable sharing | `Arc<T>`, `Arc<[T]>`, `Arc<str>` |
 
 - 不需要存的不存，重复信息只存一份。
-  - 可以从其他字段在 O(1) 时间内重新计算出的数据，都不存。例如：可推导的长度、校验和、预计算哈希（除非热点剖面证明其必要）。
+  - 可以从其他字段在 O(1) 时间内重新计算出的数据，都不存。例如：可推导的长度、校验和、预计算哈希（除非profiling证明其必要）。
   - 可以从其他存储取得的数据，优先借用，也不自己存。
 - 对于不可变变长数据
   - 首先选用 `bumpalo` 或 nightly 分配器。
@@ -116,13 +88,12 @@ struct Email {full: Box<str>,at_offset: u32}
   - 使用 `Vec<T>` + ID，需要删除时使用 freelist。
 - 对于引用计数
   - 禁止使用 `Rc`。在单线程上下文中，必须通过清晰的单一所有权或借用解决共享，无法解决时重新审视架构。
-  - `Arc` 仅允许用于跨线程共享不可变数据，不得用于可变共享或单线程场景。
-  - 需要共享可变状态时，优先考虑基于索引的句柄配合 arena 分配，或使用通道传递所有权。
-- 保留复杂度契约需要的索引结构，避免为方便而构建辅助映射。
+  - `Arc` 主要在异步和跨线程考虑。或者采用 message passing。
+- 保留复杂度契约需要的索引结构，但不包括只为了方便引入的。
 
 ### 整数和打包
 
-- 使用 `u32` ID。多数情况，`u32` ID 随对象死亡而复用，因此足够安全。
+- 使用 `u32` ID。若采用 `u32` ID 随对象死亡而复用的设计，已很难溢出。
 - 若值域允许，优先使用 `u8/i8`、`u16/i16`。
 - 当一个大的标量可拆分为多个不同含义且各自有界的小字段时，应手动分包。
 - 算术运算和潜在无界的数值：使用 `i64/u64`。
@@ -164,15 +135,14 @@ struct Email {full: Box<str>,at_offset: u32}
 - 一开始就要考虑：系统边界、端到端正向路径、错误模型。
 - 尽早拆分 crate。最小示例：每个 crate 包含一个 `lib.rs`，几十到小几百行代码。更长代码需要进一步拆分为模块。
 - 设计类型，用伪代码起草定义。要求：
-  - 对（几乎）所有内容使用 newtype。例如：`UserId(u32)`、`Email(Box<str>)`。
-  - 谨慎应用编码风格中的可见性规则。
+  - 尽可能 newtype。例如：`User(u32)`、`Email(Box<str>)`。
+  - 名称不要带 `Id` 后缀。
+  - 使用上述可见性规则。
   - 为热点类型设计高效内存布局。
 - 交付物：需求文档（包含用例和测试用例）、项目骨架、类型系统。
 
 ### 2. 实现一个特性
 
-- 研究基线，理解当前行为，可运行代码、添加临时日志。
-- 重新表述需求以避免返工。尽可能将其表达为精确的行为差异。
 - 不破坏组织与分层。将新代码放到正确位置，或创建新模块。
 
 ### 3. 重构现有代码
@@ -180,18 +150,18 @@ struct Email {full: Box<str>,at_offset: u32}
 #### 原则
 
 - 重构的目标是让代码更易于推理。
-- 避免只拆分大函数为小函数，却不减少每个单元必须依赖的前置条件。会达成使控制流更加分散的反效果，务必不要这么做。
-- 如果为简化推理而有意改变行为，则视为需求变更，并明确描述行为差异。
+- 避免只拆分大函数为小函数，却不减少每个单元必须依赖的前置条件。这样可能导致控制流更加分散，我们认为是不好的。
+  - [push ifs up and fors down](https://matklad.github.io/2023/11/15/push-ifs-up-and-fors-down.html)
+- 为简化推理而有意改变行为，是可以接受的。
 - 优先选择能处理复杂度的重构：
   - 当约定足够时，不引入配置。
   - 让行为更数据驱动、声明式，例如使用表、枚举、宏。
-  - 宏参数可能被惰性、有条件或多次求值（大多数情况都是这样），此时建议使用闭包语法 `|| ...` 而非普通表达式 `expr`。
-- 优先选择暴露有效状态转换的类型，而不是过宽的可变表面和不受约束的 setter。
+  - 设计宏的时候，如果可能被惰性、有条件或多次求值，设计成闭包语法 `|| ...` 而非普通表达式 `expr`。
+- 暴露有效状态转换，而不是过宽的 mutable surface (e.g. unrestricted setter)。
 
 #### 步骤
 
 - 研究基线，理解当前行为。
 - 重新表述并确认现有业务语义是否仍然必要。如果需求已过时，可以改变行为。
 - 确保重构彻底：删除死代码，检查是否存在绕过重构后的代码的路径。禁止留 wrapper 或 re-export。
-- 死代码标准：clippy警告的死代码，外加死 `pub` 函数。除非项目另有说明，否则假设 workspace 的内部 crate 不承诺 API 稳定，死 `pub` 函数可以放心删除。
-- 对于大型重构，创建一个实验性 crate。
+- 死代码标准：clippy警告的死代码，另外还有死 `pub` 函数。除非项目另有说明，否则假设 workspace 的内部 crate 不承诺 API 稳定，死 `pub` 函数可以放心删除。

@@ -13,4 +13,4 @@ following rules apply for every repo, doesn't apply to inline script in tool cal
 ---
 1. slightly discourage python usage for all git check-in code.
 2. discourage CPython for any computation intensive work.
-3. discourage saving writeup for a specific turn as doc, writing user prompt in a specific turn into doc.
+3. strongly discourage putting these into project document: writeup for a single turn, rules mentioned for that turn only, and rules already mentioned in skill.

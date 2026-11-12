@@ -5,7 +5,7 @@ description: Use when introducing or reviewing naming consistency
 
 修饰词必须承担区分作用，确实存在不同再加修饰。比如叫 Batch、Relay 就够了，不因为实现特点就叫 DenseBatch、ScopedRelay。
 
-判断修饰词是否必要，要在项目里找出实际存在的同名核心概念，不能用假想的冲突替它辩护。例如审查 `RuntimePhase` 时，不能因为项目还有构建、任务等其他“状态”，就说 `Runtime` 有区分作用；应搜索是否实际存在另一种 `Phase`。如果所有 `Phase` / `phase` 都指向 `RuntimePhase`，而构建、任务用的是 `state`，就应建议简化为 `Phase`。类型名与存储字段分别按各自上下文判断，不必因此机械地把数据库的 `runtime_phase` 也改成 `phase`。
+例如 `RuntimePhase`：若项目里没有另一种 `Phase`，就叫 `Phase`；其他叫 `state` 的状态不算区分对象。先搜索，不凭想象保留修饰词。
 
 优先一个词，通常不超过两个词。
 
